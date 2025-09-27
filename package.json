@@ -1,15 +1,15 @@
 {
   "name": "wordloop",
   "version": "1.0.0",
+  "description": "Custom GPT backend with Supabase + Vercel serverless functions",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vercel dev",
+    "build": "echo 'No build step'",
+    "start": "vercel dev"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "@supabase/supabase-js": "^2.58.0"
+    "@supabase/supabase-js": "^2.44.3"
   }
 }
