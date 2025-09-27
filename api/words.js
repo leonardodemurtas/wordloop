@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   }
 
   const { data, error } = await supabase
-    .from('lexicon.words')   // ✅ schema-qualified table name
+    .from('lexicon:words')   // ✅ schema:table syntax
     .select('*')
     .limit(10);
 
