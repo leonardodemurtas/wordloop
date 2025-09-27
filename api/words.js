@@ -1,0 +1,36 @@
+import { createClient } from '@supabase/supabase-js';
+
+// init client with service role key (server-side only)
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { persistSession: false } }
+);
+
+function guard(req, res) {
+  const k = req.headers['x-api-key'];
+  if (!process.env.X_API_KEY || k !== process.env.X_API_KEY) {
+    res.status(401).json({ error: 'unauthorized' });
+    return false;
+  }
+  return true;
+}
+
+export default async function handler(req, res) {
+  if (!guard(req, res)) return;
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'method not allowed' });
+  }
+
+  // query all rows (limit to 20 for now)
+  const { data, error } = await supabase
+    .from('lexicon.words')
+    .select('*')
+    .limit(20);
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  return res.status(200).json({ items: data });
+}
