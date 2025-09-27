@@ -22,11 +22,13 @@ export default async function handler(req, res) {
   }
 
   const { data, error } = await supabase
-    .from('lexicon:words')   // ✅ schema:table syntax
+    .schema('lexicon')   // ✅ point to your schema
+    .from('words')       // ✅ table name
     .select('*')
     .limit(10);
 
   if (error) {
+    console.error('Supabase error:', error); // 👀 goes to Vercel Logs
     return res.status(500).json({ error: error.message });
   }
 
