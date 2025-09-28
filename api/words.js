@@ -73,7 +73,7 @@ async function createWord(req, res) {
     return res.status(409).json({ error: 'already exists', id: dupeRows[0].id });
   }
 
-  // insert
+  // insert a single object, then read first returned row (no .single())
   const insertRow = {
     word: rawWord,
     description,
@@ -84,20 +84,21 @@ async function createWord(req, res) {
     collocations,
     review_count,
     last_review
-    // created_at / updated_at handled by DB defaults/trigger
   };
 
-  // insert a single object and fetch it back
-  const { data, error } = await supabase
+  const { data: insRows, error: insErr } = await supabase
     .from('words')
     .insert(insertRow)
     .select('id, word, description, example, type, relevance, review_count, last_review, created_at, updated_at')
-    .single();
+    .limit(1);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (insErr) return res.status(500).json({ error: insErr.message });
+
+  const item = Array.isArray(insRows) ? insRows[0] : insRows;
+  if (!item) return res.status(500).json({ error: 'insert failed: no row returned' });
 
   res.setHeader('Cache-Control', 'no-store');
-  return res.status(201).json({ item: data });
+  return res.status(201).json({ item });
 }
 
 /* --------------------------- GET /api/words -------------------------- */
