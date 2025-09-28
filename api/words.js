@@ -19,29 +19,24 @@ export default async function handler(req, res) {
   if (!guard(req, res)) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
 
-  const URL = process.env.SUPABASE_URL || '';
-  const SR  = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  // log presence (never secrets)
-  console.error('ENV DEBUG:', { URL, SR });
-
-  // preflight ping to Supabase REST (should return 200/404 but NOT throw)
-  try {
-    const ping = await fetch(`${URL}/rest/v1/`, {
-      method: 'GET',
-      headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY || '' }
-    });
-    console.error('PING:', { status: ping.status });
-  } catch (e) {
-    console.error('PING_FAIL:', e);
-  }
+  const { q = '', type = '', relevance = '', limit = '20' } = req.query || {};
+  const lim = Math.min(Math.max(parseInt(String(limit), 10) || 20, 1), 100);
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('words')
-      .select('id, word, description, example, type, relevance, review_count, last_review, created_at')
+      .select('id, word, description, example, type, relevance, review_count, last_review, created_at', { count: 'exact' });
+
+    if (q) {
+      // simple case-insensitive match on word/description
+      query = query.or(`word.ilike.%${q}%,description.ilike.%${q}%`);
+    }
+    if (type) query = query.eq('type', String(type));
+    if (relevance) query = query.eq('relevance', String(relevance));
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: true })
-      .limit(50);
+      .limit(lim);
 
     if (error) {
       console.error('Supabase error:', error);
@@ -49,9 +44,12 @@ export default async function handler(req, res) {
     }
 
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=600');
-    return res.status(200).json({ items: data ?? [] });
+    return res.status(200).json({
+      items: data ?? [],
+      nbHits: typeof count === 'number' ? count : (data?.length ?? 0)
+    });
   } catch (err) {
     console.error('Unexpected error:', err);
-    return res.status(500).json({ error: String(err) });
+    return res.status(500).json({ error: 'unexpected error' });
   }
 }
