@@ -16,8 +16,8 @@ function guard(req, res) {
 }
 
 export default async function handler(req, res) {
-  // DEBUG: do not print secrets, just presence
-  console.log('ENV DEBUG:', 'SR_PRESENT=' + (!!process.env.SUPABASE_SERVICE_ROLE_KEY), 'URL_PRESENT=' + (!!process.env.SUPABASE_URL));
+  // DEBUG (error-level so it is visible in Error filters)
+  console.error('ENV DEBUG:', 'SR_PRESENT=' + (!!process.env.SUPABASE_SERVICE_ROLE_KEY), 'URL_PRESENT=' + (!!process.env.SUPABASE_URL));
 
   if (!guard(req, res)) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
