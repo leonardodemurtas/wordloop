@@ -27,7 +27,6 @@ export default async function handler(req, res) {
 
 /* -------------------------- POST /api/words -------------------------- */
 async function createWord(req, res) {
-  // Parse JSON body safely
   let body = {};
   try {
     body = typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
@@ -35,43 +34,36 @@ async function createWord(req, res) {
     return res.status(400).json({ error: 'invalid JSON body' });
   }
 
-  // Required
   const rawWord = (body.word ?? '').toString().trim();
   if (!rawWord) return res.status(400).json({ error: 'word is required' });
 
-  // Optional fields (trimmed)
   const description   = (body.description ?? '').toString().trim() || null;
   const example       = (body.example ?? '').toString().trim() || null;
   const type          = (body.type ?? '').toString().trim() || null;
   const conjugations  = (body.conjugations ?? '').toString().trim() || null;
   const collocations  = (body.collocations ?? '').toString().trim() || null;
 
-  // Relevance normalization
   const allowedRel = ['low','medium','high'];
   const rel = (body.relevance ?? '').toString().toLowerCase().trim();
   const relevance = allowedRel.includes(rel) ? rel : 'medium';
 
-  // last_review (optional iso); if bad, ignore
   let last_review = null;
   if (body.last_review) {
     const d = new Date(body.last_review);
     if (!Number.isNaN(d.getTime())) last_review = d.toISOString();
   }
-
-  // Always start at zero regardless of what the caller sends
   const review_count = 0;
 
-  // (Optional) simple duplicate check (case-insensitive exact match)
+  // simple dupe check (case-insensitive exact match)
   const { data: dupe, error: dupeErr } = await supabase
     .from('words')
     .select('id, word')
-    .ilike('word', rawWord)   // equality when no % wildcard, case-insensitive
+    .ilike('word', rawWord)
     .maybeSingle();
 
   if (dupeErr) return res.status(500).json({ error: dupeErr.message });
   if (dupe)    return res.status(409).json({ error: 'already exists', id: dupe.id });
 
-  // Insert
   const insertRow = {
     word: rawWord,
     description,
@@ -82,14 +74,14 @@ async function createWord(req, res) {
     collocations,
     review_count,
     last_review
-    // created_at/updated_at are set by DB defaults/trigger
   };
 
+  // 🔧 key change: insert a single object and use .single()
   const { data, error } = await supabase
     .from('words')
-    .insert([insertRow])
+    .insert(insertRow) // not [insertRow]
     .select('id, word, description, example, type, relevance, review_count, last_review, created_at, updated_at')
-    .maybeSingle();
+    .single();
 
   if (error) return res.status(500).json({ error: error.message });
 
@@ -102,14 +94,12 @@ async function listWords(req, res) {
   const { q = '', type = '', relevance = '', limit = '20' } = req.query || {};
   const lim = Math.min(Math.max(parseInt(String(limit), 10) || 20, 1), 100);
 
-  // Clean q: trim and remove a single pair of wrapping double quotes
   const rawQ = String(q ?? '');
   let cleanedQ = rawQ.trim();
   if (/^".*"$/.test(cleanedQ)) cleanedQ = cleanedQ.slice(1, -1);
   const hasQuery = cleanedQ.length > 0;
 
   try {
-    // Ranked FTS via RPC when q is present
     if (hasQuery) {
       const { data, error } = await supabase.rpc('search_words', {
         p_q: cleanedQ,
@@ -125,10 +115,12 @@ async function listWords(req, res) {
       console.error('RPC search_words error (fallback to ILIKE):', error);
     }
 
-    // Fallback / no-q path: ILIKE
     let query = supabase
       .from('words')
-      .select('id, word, description, example, type, relevance, review_count, last_review, created_at', { count: 'exact' });
+      .select(
+        'id, word, description, example, type, relevance, review_count, last_review, created_at',
+        { count: 'exact' }
+      );
 
     if (hasQuery) {
       const qEsc = cleanedQ.replace(/,/g, '\\,');
