@@ -16,16 +16,14 @@ function guard(req, res) {
 }
 
 export default async function handler(req, res) {
-  // DEBUG (error-level so it is visible in Error filters)
-  console.error('ENV DEBUG:', 'SR_PRESENT=' + (!!process.env.SUPABASE_SERVICE_ROLE_KEY), 'URL_PRESENT=' + (!!process.env.SUPABASE_URL));
-
   if (!guard(req, res)) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
 
   try {
     const { data, error } = await supabase
       .from('words')
-      .select('*')
+      .select('id, word, description, example, type, relevance, review_count, last_review, created_at')
+      .order('created_at', { ascending: true })
       .limit(50);
 
     if (error) {
@@ -33,7 +31,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: error.message });
     }
 
-    return res.status(200).json({ items: data });
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=600');
+    return res.status(200).json({ items: data ?? [] });
   } catch (err) {
     console.error('Unexpected error:', err);
     return res.status(500).json({ error: 'unexpected error' });
