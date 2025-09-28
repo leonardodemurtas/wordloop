@@ -1,4 +1,3 @@
-// api/words.js
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -17,14 +16,15 @@ function guard(req, res) {
 }
 
 export default async function handler(req, res) {
+  // DEBUG: do not print secrets, just presence
+  console.log('ENV DEBUG:', 'SR_PRESENT=' + (!!process.env.SUPABASE_SERVICE_ROLE_KEY), 'URL_PRESENT=' + (!!process.env.SUPABASE_URL));
+
   if (!guard(req, res)) return;
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'method not allowed' });
-  }
+  if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
 
   try {
     const { data, error } = await supabase
-      .from('words')         // table now in public
+      .from('words')
       .select('*')
       .limit(50);
 
