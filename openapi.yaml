@@ -1,0 +1,155 @@
+openapi: 3.1.0
+info:
+  title: WordLoop API
+  version: 1.0.0
+servers:
+  - url: https://wordloop.vercel.app
+security:
+  - ApiKeyAuth: []
+paths:
+  /api/words:
+    get:
+      operationId: listWords
+      summary: List/search words
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+          description: Full-text query (matches word/description)
+        - in: query
+          name: type
+          schema: { type: string, enum: [verb, noun, adjective, adverb, expression, collocation, phrase, other] }
+        - in: query
+          name: relevance
+          schema: { type: string, enum: [low, medium, high] }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nbHits]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Word'
+                  nbHits:
+                    type: integer
+        '401': { description: unauthorized }
+        '500': { description: server error }
+  /api/words/count:
+    get:
+      operationId: countWords
+      summary: Count words matching filters
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: type
+          schema: { type: string }
+        - in: query
+          name: relevance
+          schema: { type: string, enum: [low, medium, high] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total]
+                properties:
+                  total:
+                    type: integer
+        '401': { description: unauthorized }
+        '500': { description: server error }
+  /api/words/first:
+    get:
+      operationId: firstWord
+      summary: Return the oldest saved word
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                # OAS 3.1 supports null via type: ["object","null"]
+                type:
+                  - object
+                  - 'null'
+                properties:
+                  id: { type: string, format: uuid }
+                  word: { type: string }
+                  createdAt: { type: string, format: date-time }
+        '401': { description: unauthorized }
+        '500': { description: server error }
+  /api/reviews/{id}/increment:
+    post:
+      operationId: incrementReview
+      summary: Increment review count and log a review event
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                correct:
+                  type: boolean
+                  description: Whether the answer was correct
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, id, reviewCount, lastReviewedAt]
+                properties:
+                  ok: { type: boolean }
+                  id: { type: string, format: uuid }
+                  reviewCount: { type: integer }
+                  lastReviewedAt: { type: string, format: date-time }
+        '400': { description: missing id }
+        '401': { description: unauthorized }
+        '404': { description: word not found }
+        '500': { description: server error }
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+  schemas:
+    Word:
+      type: object
+      required: [id, word, relevance, review_count, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        word: { type: string }
+        description: { type: string, nullable: true }
+        example: { type: string, nullable: true }
+        type: { type: string, nullable: true }
+        relevance: { type: string, enum: [low, medium, high] }
+        review_count: { type: integer }
+        last_review: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
