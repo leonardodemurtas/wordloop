@@ -1,3 +1,4 @@
+// api/words.js
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -17,19 +18,49 @@ function guard(req, res) {
 
 export default async function handler(req, res) {
   if (!guard(req, res)) return;
-  if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'method not allowed' });
+  }
 
   const { q = '', type = '', relevance = '', limit = '20' } = req.query || {};
   const lim = Math.min(Math.max(parseInt(String(limit), 10) || 20, 1), 100);
 
+  // Clean q: trim and remove a single pair of wrapping double quotes, if present
+  const rawQ = String(q ?? '');
+  let cleanedQ = rawQ.trim();
+  if (/^".*"$/.test(cleanedQ)) cleanedQ = cleanedQ.slice(1, -1);
+  const hasQuery = cleanedQ.length > 0;
+
   try {
+    // --- Ranked FTS path (via RPC) ---
+    if (hasQuery) {
+      const { data, error } = await supabase.rpc('search_words', {
+        p_q: cleanedQ,
+        p_type: type || null,
+        p_relevance: relevance || null,
+        p_limit: lim
+      });
+
+      if (!error) {
+        res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=600');
+        return res.status(200).json({ items: data ?? [], nbHits: data?.length ?? 0 });
+      }
+
+      // Soft fallback to ILIKE if RPC errors (never hard-fail on odd inputs)
+      console.error('RPC search_words error (falling back to ILIKE):', error);
+    }
+
+    // --- Simple list / fallback path ---
     let query = supabase
       .from('words')
-      .select('id, word, description, example, type, relevance, review_count, last_review, created_at', { count: 'exact' });
+      .select(
+        'id, word, description, example, type, relevance, review_count, last_review, created_at',
+        { count: 'exact' }
+      );
 
-    if (q) {
-      // simple case-insensitive match on word/description
-      query = query.or(`word.ilike.%${q}%,description.ilike.%${q}%`);
+    if (hasQuery) {
+      const qEsc = cleanedQ.replace(/,/g, '\\,');
+      query = query.or(`word.ilike.%${qEsc}%,description.ilike.%${qEsc}%`);
     }
     if (type) query = query.eq('type', String(type));
     if (relevance) query = query.eq('relevance', String(relevance));
