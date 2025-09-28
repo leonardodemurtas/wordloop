@@ -22,65 +22,45 @@ export default async function handler(req, res) {
   const { id } = req.query || {};
   if (!id) return res.status(400).json({ error: 'missing id in path' });
 
+  // parse body safely
   let body = {};
-  try {
-    body = typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
-  } catch (e) {
-    // ignore, we'll validate below
-  }
+  try { body = typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}'); } catch {}
   const correct = Boolean(body.correct);
 
-  try {
-    // 1) read current review_count (safe fallback if missing)
-    const { data: currentRow, error: selectErr } = await supabase
-      .from('words')
-      .select('review_count')
-      .eq('id', id)
-      .maybeSingle();
+  // 1) fetch current
+  const { data: current, error: selErr } = await supabase
+    .from('words')
+    .select('review_count')
+    .eq('id', id)
+    .maybeSingle();
 
-    if (selectErr) {
-      console.error('selectErr', selectErr);
-      return res.status(500).json({ error: selectErr.message });
-    }
-    if (!currentRow) {
-      return res.status(404).json({ error: 'word not found' });
-    }
+  if (selErr) return res.status(500).json({ error: selErr.message });
+  if (!current) return res.status(404).json({ error: 'word not found' });
 
-    const newCount = (currentRow.review_count || 0) + 1;
-    const now = new Date().toISOString();
+  const newCount = (current.review_count || 0) + 1;
+  const now = new Date().toISOString();
 
-    // 2) update words table
-    const { data: updated, error: updateErr } = await supabase
-      .from('words')
-      .update({ review_count: newCount, last_review: now })
-      .eq('id', id)
-      .select('id, review_count, last_review')
-      .maybeSingle();
+  // 2) update words
+  const { data: updated, error: updErr } = await supabase
+    .from('words')
+    .update({ review_count: newCount, last_review: now })
+    .eq('id', id)
+    .select('id, review_count, last_review')
+    .maybeSingle();
 
-    if (updateErr) {
-      console.error('updateErr', updateErr);
-      return res.status(500).json({ error: updateErr.message });
-    }
+  if (updErr) return res.status(500).json({ error: updErr.message });
 
-    // 3) insert event into reviews
-    const { error: insertErr } = await supabase
-      .from('reviews')
-      .insert([{ word_id: id, correct }]);
+  // 3) insert review event (best-effort; report error if any)
+  const { error: insErr } = await supabase
+    .from('reviews')
+    .insert([{ word_id: id, correct }]);
 
-    if (insertErr) {
-      console.error('insertErr', insertErr);
-      // don't fail the whole operation on analytics insert failure — but report it
-      return res.status(500).json({ error: insertErr.message });
-    }
+  if (insErr) return res.status(500).json({ error: insErr.message });
 
-    return res.status(200).json({
-      ok: true,
-      id: updated?.id ?? id,
-      reviewCount: updated?.review_count ?? newCount,
-      lastReviewedAt: updated?.last_review ?? now
-    });
-  } catch (err) {
-    console.error('unexpected', err);
-    return res.status(500).json({ error: 'unexpected error' });
-  }
+  return res.status(200).json({
+    ok: true,
+    id: updated?.id ?? id,
+    reviewCount: updated?.review_count ?? newCount,
+    lastReviewedAt: updated?.last_review ?? now
+  });
 }
